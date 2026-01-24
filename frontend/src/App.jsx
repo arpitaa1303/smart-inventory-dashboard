@@ -28,13 +28,20 @@ function App() {
 
   // Fetch products on mount
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchProducts = async (retries = 3) => {
       try {
         const response = await fetch(`${API_URL}/products`);
+        if (!response.ok) throw new Error("API not ready");
         const data = await response.json();
         setProducts(data);
       } catch (error) {
-        console.error("Error fetching products:", error);
+        console.warn("Backend waking up...", error);
+
+        if (retries > 0) {
+          setTimeout(() => fetchProducts(retries - 1), 10000); // retry after 10s
+        } else {
+          console.error("Backend unavailable");
+        }
       }
     };
 

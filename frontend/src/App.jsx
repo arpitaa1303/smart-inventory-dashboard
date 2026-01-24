@@ -43,7 +43,6 @@ function App() {
     const fetchProducts = async (retries = 8) => {
       try {
         const response = await fetch(`${API_URL}/products`);
-        console.log(response);
         if (!response.ok) throw new Error("API not ready");
         const data = await response.json();
         setProducts(data);

@@ -15,7 +15,7 @@ app = FastAPI(title="Smart Inventory Dashboard API")
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3001"],
+    allow_origins=["https://smart-inventory-dashboard-arpita.vercel.app/"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

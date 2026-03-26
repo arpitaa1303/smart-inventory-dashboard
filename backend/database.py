@@ -1,6 +1,7 @@
 from datetime import datetime
 import logging
 import os
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from dotenv import load_dotenv
 from sqlalchemy import Column, DateTime, Float, Integer, String, create_engine
@@ -14,6 +15,24 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./inventory.db")
 # Render/Heroku style URLs may still use postgres://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+
+def ensure_postgres_sslmode_require(database_url: str) -> str:
+    if not database_url.startswith("postgresql://"):
+        return database_url
+
+    parsed = urlparse(database_url)
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+
+    if "sslmode" not in query:
+        query["sslmode"] = "require"
+        parsed = parsed._replace(query=urlencode(query))
+        return urlunparse(parsed)
+
+    return database_url
+
+
+DATABASE_URL = ensure_postgres_sslmode_require(DATABASE_URL)
 
 engine_kwargs = {"pool_pre_ping": True}
 connect_args = {}

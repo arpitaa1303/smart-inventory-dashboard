@@ -1,10 +1,12 @@
+import logging
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from database import Product, SessionLocal, init_db
 from ml_engine import ForecastEngine
-from database import SessionLocal, Product, SalesData
-from typing import Optional
-import logging
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -12,14 +14,42 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Smart Inventory Dashboard API")
 
-# Enable CORS for frontend
+DEFAULT_ALLOWED_ORIGINS = [
+    "https://smart-inventory-dashboard-arpita.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+
+def get_allowed_origins():
+    raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+    if not raw_origins:
+        return DEFAULT_ALLOWED_ORIGINS
+
+    origins = [
+        origin.strip().rstrip("/")
+        for origin in raw_origins.split(",")
+        if origin.strip()
+    ]
+    return origins or DEFAULT_ALLOWED_ORIGINS
+
+
+allowed_origins = get_allowed_origins()
+allow_origin_regex = os.getenv(
+    "CORS_ALLOWED_ORIGIN_REGEX",
+    r"https://smart-inventory-dashboard-.*\.vercel\.app",
+)
+
+# Enable CORS for frontend/proxy domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://smart-inventory-dashboard-arpita.vercel.app"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+logger.info("CORS allow_origins=%s allow_origin_regex=%s", allowed_origins, allow_origin_regex)
 
 # ✅ Initialize without db parameter
 ml_engine = ForecastEngine()
@@ -30,18 +60,29 @@ class WhatIfRequest(BaseModel):
     price_change_pct: float
     days: int = 30
 
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+
 @app.get("/")
 def read_root():
     return {"message": "Smart Inventory Dashboard API", "status": "running"}
 
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/products")
 def get_products():
     """Get all products with current inventory status"""
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         products = db.query(Product).all()
-        db.close()
-        
+
         result = [{
             "product_id": p.product_id,
             "product_name": p.product_name,
@@ -55,6 +96,8 @@ def get_products():
     except Exception as e:
         logger.error(f"Error fetching products: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 @app.get("/forecast/{product_id}")
 def get_forecast(product_id: str, days: int = 30):

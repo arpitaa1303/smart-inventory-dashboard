@@ -21,6 +21,20 @@ import Landing from "./Landing";
 import Loading from "./Loading";
 
 const API_URL = import.meta.env.VITE_API_URL;
+const FETCH_TIMEOUT_MS = 15000;
+const MAX_WAKE_ATTEMPTS = 15;
+const WAKE_RETRY_DELAY_MS = 8000;
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 function App() {
   const [showLanding, setShowLanding] = useState(true);
@@ -40,33 +54,55 @@ function App() {
   useEffect(() => {
     if (showLanding) return;
 
-    const fetchProducts = async (retries = 8) => {
+    if (!API_URL) {
+      console.error("VITE_API_URL is not set");
+      alert("App configuration is missing VITE_API_URL. Please check deployment env vars.");
+      setIsInitialLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+    let retryTimer = null;
+
+    const fetchProducts = async (attempt = 1) => {
       try {
-        const response = await fetch(`${API_URL}/products`);
+        // Warm the backend and verify it's ready before data calls.
+        await fetchWithTimeout(`${API_URL}/health`);
+        const response = await fetchWithTimeout(`${API_URL}/products`);
         if (!response.ok) throw new Error("API not ready");
         const data = await response.json();
+        if (isCancelled) return;
         setProducts(data);
         setIsInitialLoading(false);
       } catch (error) {
         console.warn(
-          `Backend waking up... (${8 - retries + 1}/8 attempts)`,
+          `Backend waking up... (${attempt}/${MAX_WAKE_ATTEMPTS} attempts)`,
           error,
         );
 
-        if (retries > 0) {
-          // Retry after 8 seconds (total: ~64 seconds max wait time)
-          setTimeout(() => fetchProducts(retries - 1), 8000);
+        if (attempt < MAX_WAKE_ATTEMPTS) {
+          retryTimer = setTimeout(
+            () => fetchProducts(attempt + 1),
+            WAKE_RETRY_DELAY_MS,
+          );
         } else {
-          console.error("Backend unavailable after 8 attempts");
+          console.error(`Backend unavailable after ${MAX_WAKE_ATTEMPTS} attempts`);
           alert(
             "Unable to connect to server. Please refresh the page or try again later.",
           );
-          setIsInitialLoading(false);
+          if (!isCancelled) {
+            setIsInitialLoading(false);
+          }
         }
       }
     };
 
     fetchProducts();
+
+    return () => {
+      isCancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [showLanding]);
 
   // Auto-select first product when products are loaded
@@ -84,7 +120,7 @@ function App() {
       setIsActionLoading(true);
       try {
         const fetchJson = async (url) => {
-          const res = await fetch(url);
+          const res = await fetchWithTimeout(url);
           if (!res.ok) {
             console.warn("Non-OK response for", url, res.status);
             return null;
@@ -131,7 +167,7 @@ function App() {
 
     setIsActionLoading(true);
     try {
-      const response = await fetch(`${API_URL}/what-if`, {
+      const response = await fetchWithTimeout(`${API_URL}/what-if`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

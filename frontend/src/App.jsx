@@ -21,7 +21,7 @@ import Landing from "./Landing";
 import Loading from "./Loading";
 
 const API_URL = import.meta.env.VITE_API_URL;
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 30000;
 const MAX_WAKE_ATTEMPTS = 15;
 const WAKE_RETRY_DELAY_MS = 8000;
 
@@ -69,15 +69,18 @@ function App() {
         // Warm the backend and verify it's ready before data calls.
         await fetchWithTimeout(`${API_URL}/health`);
         const response = await fetchWithTimeout(`${API_URL}/products`);
-        if (!response.ok) throw new Error("API not ready");
+        if (!response.ok) throw new Error(`API not ready (${response.status})`);
         const data = await response.json();
         if (isCancelled) return;
         setProducts(data);
         setIsInitialLoading(false);
       } catch (error) {
+        const reason =
+          error?.name === "AbortError"
+            ? "request timed out while backend wakes up"
+            : (error?.message ?? "request failed");
         console.warn(
-          `Backend waking up... (${attempt}/${MAX_WAKE_ATTEMPTS} attempts)`,
-          error,
+          `Backend waking up... (${attempt}/${MAX_WAKE_ATTEMPTS} attempts): ${reason}`,
         );
 
         if (attempt < MAX_WAKE_ATTEMPTS) {

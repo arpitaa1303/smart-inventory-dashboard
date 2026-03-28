@@ -19,7 +19,7 @@ function Loading({ message = "Loading Dashboard" }) {
         <h2 className="text-2xl font-bold text-gray-800 mb-3">{message}</h2>
         <p className="text-gray-600 mb-2">Waking up the server...</p>
         <p className="text-sm text-gray-500">
-          This may take up to 2 minutes on first load
+          This may take up to 60 seconds on first load
         </p>
 
         {/* Progress Dots */}
